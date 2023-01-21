@@ -1,0 +1,698 @@
+---
+  title: "Thesis - Final analysis"
+output: pdf_document
+date: "`r Sys.Date()`"
+---
+  
+```{r libraries, echo=FALSE}
+library(tidyverse)
+library(hrbrthemes)
+library(babynames)
+library(viridis)
+library(ggplot2)
+library(ggridges)
+library(ggplot2)
+library(dplyr)
+library(formatR)
+library(Metrics)
+library(philentropy)
+library(forecast)
+library(scales)
+library(xtable)
+library(Hmisc)
+library(MCS)
+
+#library(psych)
+#describe.by(mydata, group,...)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 40), tidy = TRUE)
+
+# Define colors
+redish <- rgb(187,95,105, maxColorValue = 255)
+puffer <- rgb(123,53,52, maxColorValue = 255)
+```
+
+## R Markdown
+```{r load dataframes}
+df_xgb <- read.csv(file="/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/XGBoost200.csv")
+df_mexgb <- read.csv(file="/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/MeXGBoost.csv")
+df_xgbtweedie <- read.csv(file="/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/XGBoostTweedie.csv")
+
+df_ann <- read.csv(file="/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/ANN.csv")
+df_meann <- read.csv(file="/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/MeANN.csv")
+
+df_xgb350 <- read.csv(file="/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/XGBoost350.csv")
+df_xgb450 <- read.csv(file="/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/XGBoost450.csv")
+```
+
+```{r}
+df_xgb$yhat <- round(df_xgb$yhat,1)
+df_mexgb$yhat <- round(df_mexgb$yhat,1)
+df_xgbtweedie$yhat <- round(df_xgbtweedie$yhat,1)
+
+df_ann$yhat <- round(df_ann$yhat,1)
+df_meann$yhat <- round(df_meann$yhat,1)
+```
+
+
+```{r factorize dataframe for plots later on}
+df <- rbind(data.frame(dataset="Original", obs=df_ann$hb),
+            data.frame(dataset="ANN", obs=df_ann$yhat),
+            data.frame(dataset="MeANN", obs=df_meann$yhat),
+            data.frame(dataset="XGBoost", obs=df_xgb$yhat),
+            data.frame(dataset="MeXGBoost", obs=df_mexgb$yhat),
+            data.frame(dataset="XGBoostTweedie", obs=df_xgbtweedie$yhat)
+)
+df2 <- df
+df2$dataset <- factor(df2$dataset, levels = c("Original","ANN", "MeANN", "XGBoost", "MeXGBoost", "XGBoostTweedie"))
+```
+
+
+## Including Plots
+
+You can also embed plots, for example:
+  Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# Full size
+```{r pressure, echo=FALSE}
+hist_full <- ggplot(df2, aes(x = obs)) +    # Draw each column as histogram
+  geom_histogram( binwidth=15, fill=redish, col = "black", size =0.08) +
+  scale_y_continuous(labels = scales::label_comma(scale = 0.000001)) +
+  facet_wrap(~ (dataset), nrow = 2) +
+  xlab("Haemoglobin concentration") + ylab("Count (in millions)") + #expression("Count" ~ (x10^4))
+  theme(strip.background =element_rect(fill="gray90"))
+#theme_bw() +
+#theme(strip.text = element_text(colour = 'white'))
+ggsave('/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/FIG-hist_full.pdf',width = 20, height = 10, units = "cm")
+
+hist_full
+```
+
+```{r}
+hist_below <- ggplot(df2, aes(x = obs)) +    # Draw each column as histogram
+  geom_histogram( binwidth=2, fill=redish, col = "black", size =0.08) +
+  coord_cartesian(xlim=c(0, 47)) + 
+  scale_y_continuous(labels = scales::label_comma(scale = 0.000001)) +
+  scale_x_continuous(breaks = c(0,10,20,30,40,47)) +
+  facet_wrap(~ (dataset), nrow = 2) +
+  xlab("Haemoglobin concentration") + ylab("Count (in millions)") + #expression("Count" ~ (x10^4))
+  theme(strip.background =element_rect(fill="gray90"))
+#theme_bw() +
+#theme(strip.text = element_text(colour = 'white'))
+
+ggsave('/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/FIG-hist_below.pdf',width = 20, height = 10, units = "cm")
+hist_below
+```
+
+```{r}
+hist_above <- ggplot(df2, aes(x = obs)) +    # Draw each column as histogram
+  geom_histogram( binwidth=10, fill=redish, col = "black", size =0.08) +
+  coord_cartesian(xlim=c(47,300), ylim=c(0,40000)) + 
+  scale_y_continuous(labels = scales::label_comma(scale = 0.000001)) +
+  scale_x_continuous(breaks = c(47, 100, 200, 300)) +
+  facet_wrap(~ (dataset), nrow = 2) +
+  xlab("Haemoglobin concentration") + ylab("Count (in millions)") + #expression("Count" ~ (x10^4))
+  theme(strip.background =element_rect(fill="gray90"))
+#theme_bw() +
+#theme(strip.text = element_text(colour = 'white'))
+ggsave('/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/FIG-hist_above.pdf',width = 20, height = 10, units = "cm")
+hist_above
+```
+
+```{r}
+ridge_below2 <- ggplot(df, aes(x = obs, y = dataset, fill = dataset, color = dataset)) +
+  geom_density_ridges(linetype = 1,lwd = 0.5, rel_min_height = 0.0005, scale = 1.4) +
+  xlab("Haemoglobin concentration") + ylab("Model") +
+  theme(legend.position = "none") +
+  coord_cartesian(xlim=c(0,200)) #expression("Count" ~ (x10^4))
+#coord_cartesian(xlim=c(0, 47)) 
+ridge_below2
+ggsave('/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/FIG-ridge.pdf',width = 20, height = 10, units = "cm")
+```
+
+```{r root mean squared error calculation}
+rmse_ann <- rmse(df_ann$yhat, df_ann$hb)
+rmse_meann <- rmse(df_meann$yhat, df_ann$hb)
+rmse_xgb <- rmse(df_xgb$yhat, df_ann$hb)
+rmse_mexgb <- rmse(df_mexgb$yhat, df_ann$hb)
+rmse_xgbtweedie <- rmse(df_xgbtweedie$yhat, df_ann$hb)
+```
+
+```{r mean absolute error calculation}
+mae_ann <- mae(df_ann$yhat, df_ann$hb)
+mae_meann <- mae(df_meann$yhat, df_ann$hb)
+mae_xgb <- mae(df_xgb$yhat, df_ann$hb)
+mae_mexgb <- mae(df_mexgb$yhat, df_ann$hb)
+mae_xgbtweedie <- mae(df_xgbtweedie$yhat, df_ann$hb)
+```
+
+```{r median absolute error calculation}
+medae_ann <- mdae(df_ann$yhat, df_ann$hb)
+medae_meann <- mdae(df_meann$yhat, df_ann$hb)
+medae_xgb <- mdae(df_xgb$yhat, df_ann$hb)
+medae_mexgb <- mdae(df_mexgb$yhat, df_ann$hb)
+medae_xgbtweedie <- mdae(df_xgbtweedie$yhat, df_ann$hb)
+```
+
+```{r}
+df_ann_lb <- subset(df_ann, hb<=47)
+df_meann_lb <- subset(df_meann, hb<=47)
+df_xgb_lb <- subset(df_xgb, hb<=47)
+df_mexgb_lb <- subset(df_mexgb, hb<=47)
+df_xgbtweedie_lb <- subset(df_xgbtweedie, hb<=47)
+
+df_ann_ub <- subset(df_ann, hb>=47)
+df_meann_ub <- subset(df_meann, hb>=47)
+df_xgb_ub <- subset(df_xgb, hb>=47)
+df_mexgb_ub <- subset(df_mexgb, hb>=47)
+df_xgbtweedie_ub <- subset(df_xgbtweedie, hb>=47)
+```
+
+```{r percentage correctly specified calculation}
+pcc <- function(ypred, ytrue, threshold) {
+  zerovec = 0
+  for (item in (df_ann$X + 1)){
+    if ((ypred[item] <= threshold) & (ytrue[item] <=threshold)){
+      zerovec = zerovec + 1
+    } else if ((ypred[item] > threshold) & (ytrue[item] > threshold)){
+      zerovec = zerovec + 1
+    }
+  }
+  return(zerovec/length(ypred))
+}
+
+pcc_ann <- pcc(df_ann$yhat, df_ann$hb, 47)
+pcc_meann <- pcc(df_meann$yhat, df_ann$hb, 47)
+pcc_xgb <- pcc(df_xgb$yhat, df_ann$hb, 47)
+pcc_mexgb <- pcc(df_mexgb$yhat, df_ann$hb, 47)
+pcc_xgbtweedie <- pcc(df_xgbtweedie$yhat, df_ann$hb, 47)
+```
+
+
+```{r}
+pcc <- function(ypred, ytrue, threshold) {
+  zerovec = 0
+  for (item in seq(1, nrow(df_ann_ub))){
+    if ((ypred[item] <= threshold) & (ytrue[item] <=threshold)){
+      zerovec = zerovec + 1
+    } else if ((ypred[item] > threshold) & (ytrue[item] > threshold)){
+      zerovec = zerovec + 1
+    }
+  }
+  return(zerovec/length(ypred))
+}
+
+pcc_ann_ub <- pcc(df_ann_ub$yhat, df_ann_ub$hb, 47)
+pcc_meann_ub <- pcc(df_meann_ub$yhat, df_ann_ub$hb, 47)
+pcc_xgb_ub <- pcc(df_xgb_ub$yhat, df_ann_ub$hb, 47)
+pcc_mexgb_ub <- pcc(df_mexgb_ub$yhat, df_ann_ub$hb, 47)
+pcc_xgbtweedie_ub <- pcc(df_xgbtweedie_ub$yhat, df_ann_ub$hb, 47)
+pcc_ub <- c(pcc_ann_ub, pcc_meann_ub, pcc_xgb_ub, pcc_mexgb_ub,pcc_xgbtweedie_ub)
+```
+
+```{r}
+pcc <- function(ypred, ytrue, threshold) {
+  zerovec = 0
+  for (item in seq(1, nrow(df_ann_lb))){
+    if ((ypred[item] <= threshold) & (ytrue[item] <=threshold)){
+      zerovec = zerovec + 1
+    } else if ((ypred[item] > threshold) & (ytrue[item] > threshold)){
+      zerovec = zerovec + 1
+    }
+  }
+  return(zerovec/length(ypred))
+}
+
+pcc_ann_lb <- pcc(df_ann_lb$yhat, df_ann_lb$hb, 47)
+pcc_meann_lb <- pcc(df_meann_lb$yhat, df_ann_lb$hb, 47)
+pcc_xgb_lb <- pcc(df_xgb_lb$yhat, df_ann_lb$hb, 47)
+pcc_mexgb_lb <- pcc(df_mexgb_lb$yhat, df_ann_lb$hb, 47)
+pcc_xgbtweedie_lb <- pcc(df_xgbtweedie_lb$yhat, df_ann_lb$hb, 47)
+pcc_lb <- c(pcc_ann_lb, pcc_meann_lb, pcc_xgb_lb, pcc_mexgb_lb,pcc_xgbtweedie_lb)
+```
+
+
+```{r percentage deviation calculation}
+pdev <- function(ypred, ytrue, threshold) {
+  zerovec = 0
+  for (item in seq_along(ypred)){
+    if ((ypred[item] <= (ytrue[item]+threshold)) & (ypred[item] >= (ytrue[item]-threshold))){
+      zerovec = zerovec + 1
+    }
+  }
+  return(zerovec/length(ypred))
+}
+
+pdev_ann <- pdev(df_ann$yhat, df_ann$hb, 3)
+pdev_meann <- pdev(df_meann$yhat, df_ann$hb, 3)
+pdev_xgb <- pdev(df_xgb$yhat, df_ann$hb, 3)
+pdev_mexgb <- pdev(df_mexgb$yhat, df_ann$hb, 3)
+pdev_xgbtweedie <- pdev(df_xgbtweedie$yhat, df_ann$hb, 3)
+
+pdev_ann_lb <- pdev(df_ann_lb$yhat, df_ann_lb$hb, 3)
+pdev_meann_lb <- pdev(df_meann_lb$yhat, df_ann_lb$hb, 3)
+pdev_xgb_lb <- pdev(df_xgb_lb$yhat, df_ann_lb$hb, 3)
+pdev_mexgb_lb <- pdev(df_mexgb_lb$yhat, df_ann_lb$hb, 3)
+pdev_xgbtweedie_lb <- pdev(df_xgbtweedie_lb$yhat, df_ann_lb$hb, 3)
+
+pdev_ann_ub <- pdev(df_ann_ub$yhat, df_ann_ub$hb, 3)
+pdev_meann_ub <- pdev(df_meann_ub$yhat, df_ann_ub$hb, 3)
+pdev_xgb_ub <- pdev(df_xgb_ub$yhat, df_ann_ub$hb, 3)
+pdev_mexgb_ub <- pdev(df_mexgb_ub$yhat, df_ann_ub$hb, 3)
+pdev_xgbtweedie_ub <- pdev(df_xgbtweedie_ub$yhat, df_ann_ub$hb, 3)
+```
+
+```{r tweedie calculation}
+tweedie <- function(ypred, ytrue) {
+  p=1.6
+  a = ytrue*(ypred^(1-p))/(1-p)
+  b = (ypred^(2-p))/(2-p)
+  return((-a+b))
+}
+
+tweedie_ann <- tweedie(df_ann$yhat, df_ann$hb) #NaN since predictions 
+tweedie_meann <- tweedie(df_meann$yhat, df_ann$hb) #NaN
+tweedie_xgb <- tweedie(df_xgb$yhat, df_ann$hb) #NaN
+tweedie_mexgb <- tweedie(df_mexgb$yhat, df_ann$hb) #NaN
+tweedie_xgbtweedie <- tweedie(df_xgbtweedie$yhat, df_ann$hb)
+```
+
+```{r}
+ks_ann <- ks.test(df_ann$yhat, df_ann$hb) 
+ks_meann <- ks.test(df_meann$yhat, df_ann$hb)
+ks_xgb <- ks.test(df_xgb$yhat, df_ann$hb) 
+ks_mexgb <- ks.test(df_mexgb$yhat, df_ann$hb)
+ks_xgbtweedie <- ks.test(df_xgbtweedie$yhat, df_ann$hb)
+
+# Since the p-value is less than .05 all across the board, we reject the null hypothesis. We have sufficient evidence to say that the sample data does not come from a normal distribution.
+```
+
+```{r}
+kl_ann <- KL(rbind(df_ann$hb/sum(df_ann$hb),df_ann$yhat/sum(df_ann$yhat))) 
+kl_meann <- KL(rbind(df_ann$hb/sum(df_ann$hb),df_meann$yhat/sum(df_meann$yhat)))
+kl_xgb <- KL(rbind(df_ann$hb/sum(df_ann$hb), df_xgb$yhat/sum(df_xgb$yhat)))
+kl_mexgb <- KL(rbind(df_ann$hb/sum(df_ann$hb), df_mexgb$yhat/sum(df_mexgb$yhat)))
+kl_xgbtweedie <- KL(rbind(df_ann$hb/sum(df_ann$hb),df_xgbtweedie$yhat/sum(df_xgbtweedie$yhat)))
+
+# Since the p-value is less than .05 all across the board, we reject the null hypothesis. We have sufficient evidence to say that the sample data does not come from the proposed distribution.
+```
+
+```{r}
+#For alternative="greater", the alternative hypothesis (p<0.05) is that method 2 is more accurate than method 1. 
+dm_ann_meann <- dm.test(df_ann$yhat-df_ann$hb, df_meann$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance for meann and ann.
+# test statistic < 0, so ann outperforms meann
+
+dm_ann_xgb <- dm.test(df_ann$yhat-df_ann$hb, df_xgb$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance for xgb and ann.
+# test static < 0, ann outperforms xgboost
+
+dm_ann_mexgb <- dm.test(df_ann$yhat-df_ann$hb, df_mexgb$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance
+# test statistic > 0, mexgb outperforms ann.
+
+dm_ann_xgbtweedie <- dm.test(df_ann$yhat-df_ann$hb, df_xgbtweedie$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance
+# test statistic > 0, xgbtweedie outperforms ann.
+
+dm_meann_xgb <- dm.test(df_meann$yhat-df_ann$hb, df_xgb$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance for meann and xgb.
+# test statistic < 0, meann outperforms xgboost 
+
+dm_xgb_mexgb <- dm.test(df_xgb$yhat-df_ann$hb, df_mexgb$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance
+# test statistic > 0, mexgb outperforms xgb
+
+dm_xgb_gxbtweedie <- dm.test(df_xgb$yhat-df_ann$hb, df_xgbtweedie$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance
+# test statistic > 0, xgbtweedie outperforms xgb.
+
+dm_meann_mexgb <- dm.test(df_meann$yhat-df_ann$hb, df_mexgb$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance
+# test statistic > 0, mexgb outperforms meann.
+
+dm_meann_xgbtweedie <- dm.test(df_meann$yhat-df_ann$hb, df_xgbtweedie$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance
+# test statistic > 0, xgbtweedie outperforms meann.
+
+dm_mexgb_xgbtweedie <- dm.test(df_mexgb$yhat-df_ann$hb, df_xgbtweedie$yhat-df_ann$hb, "two.sided")
+# p-value is < 0.5, we reject the null hypothesis: inequal performance for xgbtweedie and mexgb.
+# test statistic < 0, mexgb outperforms xgbtweedie
+```
+
+So: mexgb > xgbtweedie > ann > meann > xgboost 
+
+```{r}
+pdev <- c(pdev_ann, pdev_meann, pdev_xgb, pdev_mexgb, pdev_xgbtweedie)
+pdev_lb <- c(pdev_ann_lb, pdev_meann_lb, pdev_xgb_lb, pdev_mexgb_lb, pdev_xgbtweedie_lb)
+pdev_ub <- c(pdev_ann_ub, pdev_meann_ub, pdev_xgb_ub, pdev_mexgb_ub, pdev_xgbtweedie_ub)
+pcc <- c(pcc_ann, pcc_meann, pcc_xgb, pcc_mexgb, pcc_xgbtweedie)
+rmse <- c(rmse_ann, rmse_meann, rmse_xgb, rmse_mexgb, rmse_xgbtweedie)
+mae <- c(mae_ann, mae_meann, mae_xgb, mae_mexgb, mae_xgbtweedie)
+medae <- c(medae_ann, medae_meann, medae_xgb, medae_mexgb, medae_xgbtweedie)
+kl <- c(kl_ann, kl_meann, kl_xgb, kl_mexgb, kl_xgbtweedie)
+
+test<-t(data.frame(round(rmse,4), round(mae,4), round(medae,4), label_percent(accuracy=0.01)(pcc), label_percent(accuracy=0.01)(pdev), label_percent(accuracy=0.01)(pdev_lb), label_percent(accuracy=0.01)(pdev_ub)))
+rownames(test) <- c('RMSE', 'MAE', 'MedAE', 'PCC', 'PDev', 'PDev_lb', 'PDev_ub')
+colnames(test) <- c('ANN', 'MeANN', 'XGBoost', 'MeXGBoost', 'XGBoostTweedie')
+test
+```
+
+```{r}
+dm_ann <- c(0, 0, 0, 0, 0)
+dm_meann <- c(dm_ann_meann$statistic, 0, 0, 0, 0)
+dm_xgb <- c(dm_ann_xgb$statistic, dm_meann_xgb$statistic, 0, 0, 0) 
+dm_mexgb <- c(dm_ann_mexgb$statistic, dm_meann_mexgb$statistic, dm_xgb_mexgb$statistic, 0, 0)
+dm_xgbtweedie <- c(dm_ann_xgbtweedie$statistic, dm_meann_xgbtweedie$statistic, dm_xgb_gxbtweedie$statistic, dm_mexgb_xgbtweedie$statistic, 0)
+
+test2<-data.frame(dm_ann, dm_meann, dm_xgb, dm_mexgb, dm_xgbtweedie)
+rownames(test2)<- c('ANN', 'MeANN', 'XGBoost', 'MeXGBoost', 'XGBoostTweedie')
+colnames(test2)<- c('ANN', 'MeANN', 'XGBoost', 'MeXGBoost', 'XGBoostTweedie')
+
+dm_meann <- c(dm_ann_meann$statistic, 0, 0, 0)
+dm_xgb <- c(dm_ann_xgb$statistic, dm_meann_xgb$statistic, 0, 0) 
+dm_mexgb <- c(dm_ann_mexgb$statistic, dm_meann_mexgb$statistic, dm_xgb_mexgb$statistic, 0)
+dm_xgbtweedie <- c(dm_ann_xgbtweedie$statistic, dm_meann_xgbtweedie$statistic, dm_xgb_gxbtweedie$statistic, dm_mexgb_xgbtweedie$statistic)
+
+test3<-data.frame(dm_meann, dm_xgb, dm_mexgb, dm_xgbtweedie)
+rownames(test3)<- c('ANN', 'MeANN', 'XGBoost', 'MeXGBoost')
+colnames(test3)<- c('MeANN', 'XGBoost', 'MeXGBoost', 'XGBoostTweedie')
+```
+
+```{r}
+kl <- c(round(kl_ann,4), round(kl_meann,4), round(kl_xgb,4), round(kl_mexgb,4), round(kl_xgbtweedie,4))
+ks <- c(round(ks_ann$statistic,4), round(ks_meann$statistic,4), round(ks_xgb$statistic,4), round(ks_mexgb$statistic,4), round(ks_xgbtweedie$statistic,4))
+klks <- t(data.frame(kl,ks))
+colnames(klks) <- c('ANN', 'MeANN', 'XGBoost', 'MeXGBoost', 'XGBoostTweedie')
+rownames(klks) <- c('Kullback-Leibler', 'Kolmogorov-Smirnov')
+```
+
+```{r write to latex}
+print(xtable(test, type = "latex"), file = "/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/stats.tex")
+print(xtable(test2, type = "latex", digits=4), file = "/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/dm1.tex")
+print(xtable(test3, type = "latex", digits=4), file = "/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/dm2.tex")
+print(xtable(klks, type = "latex", digits=4), file = "/Users/yoellekilsdonk/Documents/GitHub/thesis-erasmus-mc/VM/kiebler_kolmogrov.tex")
+```
+
+```{r}
+describe(df_ann$hb)
+describe(df_ann$yhat)
+describe(df_meann$yhat)
+describe(df_xgb$yhat)
+describe(df_mexgb$yhat)
+describe(df_xgbtweedie$yhat)
+```
+
+
+```{r}
+ccinterval <- function(df, int1, int2) {
+  yhat = df$yhat[((df$yhat>=int1)&(df$yhat<int2))] # select only predicted observations if true value lies within interval [int1,int2]
+  hb = df$hb[((df$yhat>=int1)&(df$yhat<int2))] # select only true observations for which true value lies within interval [int1,int2]
+  df_interval = cbind(hb, yhat)
+  return(df_interval)
+}
+
+cutoff_SMALL <- function(df_ann){
+  # set up cut-off values 
+  breaks <- c(0,5,10,15,20,25,30,35,40,45,50,60,70,80,90,100,120,140,160,180,200,225,250,275,300,325)
+  # specify interval/bin labels
+  tags <- c("[0-5)","[5-10)", "[10-15)", "[15-20)", "[20-25)", "[25-30)","[30-35)","[35-40)", "[40-45)","[45-50)", "[50-60)"
+            , "[60-70)", "[70-80)", "[80-90)", "[90-100)", "[100-120)", "[120-140)", "[140-160)", "[160-180)", "[180-200)", "[200-225)"
+            , "[225-250)", "[250-275)", "[275-300)", "[300-325)")
+  # bucketing values into bins
+  group_tags <- cut(df_ann$yhat, 
+                    breaks=breaks, 
+                    include.lowest=TRUE, 
+                    right=FALSE, 
+                    labels=tags)
+  # inspect bins
+  test <-summary(group_tags)
+  return (test)
+}
+
+breaks <- c(0,25,50,75,100,125,150,175,200,225,250,275,300,325,350,375)
+cutoff <- function(df_ann){
+  # set up cut-off values 
+  breaks <- c(0,25,50,75,100,125,150,175,200,225,250,275,300,325,350,375)
+  # specify interval/bin labels
+  tags <- c("[0-25)","[25-50)", "[50-75)", "[75-100)", "[100-125)", "[125-150)", "[150-175)","[175-200)","[200-225)"
+            , "[225-250)", "[250-275)", "[275-300)", "[300-325)", "[325-350)", "[350-375)")
+  # bucketing values into bins
+  group_tags <- cut(df_ann$hb, 
+                    breaks=breaks, 
+                    include.lowest=TRUE, 
+                    right=FALSE, 
+                    labels=tags)
+  # inspect bins
+  test <-summary(group_tags)
+  return (test)
+}
+
+xxx <- data.frame(matrix(ncol = length(breaks)-1, nrow = length(breaks)-1))
+x2 <- integer(length(breaks)-1)
+for (i in seq_along(breaks)[1:length(breaks)-1]){
+  xxx[i] = cutoff(data.frame(ccinterval(df_ann,breaks[i], breaks[i+1])))
+  x2[i]= length(ccinterval(df_ann,breaks[i], breaks[i+1]))
+}
+view(xxx)
+view(data.frame(x2/2))
+library("writexl")
+write_xlsx(xxx,"down.xlsx")
+
+incr <- seq(0,20)*16
+incr_list <- seq_along(incr)
+med_mat <- data.frame(matrix(ncol = length(incr)-1, nrow = 37))
+for (i in incr_list[1:(length(incr)-1)]){
+  med_mat[1,i] <- median(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[2,i] <- median(df_meann[((df_meann$hb>=incr[i])&(df_meann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[3,i] <- median(df_xgb[((df_xgb$hb>=incr[i])&(df_xgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[4,i] <- median(df_mexgb[((df_mexgb$hb>=incr[i])&(df_mexgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[5,i] <- median(df_xgbtweedie[((df_xgbtweedie$hb>=incr[i])&(df_xgbtweedie$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[6,i] <- median(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$hb, na.rm = TRUE)
+  med_mat[7,i] <- mean(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[8,i] <- mean(df_meann[((df_meann$hb>=incr[i])&(df_meann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[9,i] <- mean(df_xgb[((df_xgb$hb>=incr[i])&(df_xgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[10,i] <- mean(df_mexgb[((df_mexgb$hb>=incr[i])&(df_mexgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[11,i] <- mean(df_xgbtweedie[((df_xgbtweedie$hb>=incr[i])&(df_xgbtweedie$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[12,i] <- mean(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$hb, na.rm = TRUE)
+  med_mat[13,i] <- min(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[14,i] <- min(df_meann[((df_meann$hb>=incr[i])&(df_meann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[15,i] <- min(df_xgb[((df_xgb$hb>=incr[i])&(df_xgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[16,i] <- min(df_mexgb[((df_mexgb$hb>=incr[i])&(df_mexgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[17,i] <- min(df_xgbtweedie[((df_xgbtweedie$hb>=incr[i])&(df_xgbtweedie$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[18,i] <- min(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$hb, na.rm = TRUE)
+  med_mat[19,i] <- max(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[20,i] <- max(df_meann[((df_meann$hb>=incr[i])&(df_meann$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[21,i] <- max(df_xgb[((df_xgb$hb>=incr[i])&(df_xgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[22,i] <- max(df_mexgb[((df_mexgb$hb>=incr[i])&(df_mexgb$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[23,i] <- max(df_xgbtweedie[((df_xgbtweedie$hb>=incr[i])&(df_xgbtweedie$hb<incr[i+1])),]$yhat, na.rm = TRUE)
+  med_mat[24,i] <- max(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$hb, na.rm = TRUE)
+  med_mat[25,i] <- quantile(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$yhat, 0.25)
+  med_mat[26,i] <- quantile(df_meann[((df_meann$hb>=incr[i])&(df_meann$hb<incr[i+1])),]$yhat, 0.25)
+  med_mat[27,i] <- quantile(df_xgb[((df_xgb$hb>=incr[i])&(df_xgb$hb<incr[i+1])),]$yhat,0.25)
+  med_mat[28,i] <- quantile(df_mexgb[((df_mexgb$hb>=incr[i])&(df_mexgb$hb<incr[i+1])),]$yhat, 0.25)
+  med_mat[29,i] <- quantile(df_xgbtweedie[((df_xgbtweedie$hb>=incr[i])&(df_xgbtweedie$hb<incr[i+1])),]$yhat, 0.25)
+  med_mat[30,i] <- quantile(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$hb, 0.75)
+  med_mat[31,i] <- quantile(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$yhat, 0.75)
+  med_mat[32,i] <- quantile(df_meann[((df_meann$hb>=incr[i])&(df_meann$hb<incr[i+1])),]$yhat, 0.75)
+  med_mat[33,i] <- quantile(df_xgb[((df_xgb$hb>=incr[i])&(df_xgb$hb<incr[i+1])),]$yhat,0.75)
+  med_mat[34,i] <- quantile(df_mexgb[((df_mexgb$hb>=incr[i])&(df_mexgb$hb<incr[i+1])),]$yhat, 0.75)
+  med_mat[35,i] <- quantile(df_xgbtweedie[((df_xgbtweedie$hb>=incr[i])&(df_xgbtweedie$hb<incr[i+1])),]$yhat, 0.75)
+  med_mat[36,i] <- quantile(df_ann[((df_ann$hb>=incr[i])&(df_ann$hb<incr[i+1])),]$hb, 0.75)
+  med_mat[37,i] <- incr[i]
+}
+write_xlsx(med_mat,"med_mean200.xlsx")
+
+
+dataframes <- cbind(df_ann, df_meann$yhat, df_xgb$yhat, df_mexgb$yhat, df_xgbtweedie$yhat)
+
+lss <- cbind((dataframes$yhat-dataframes$hb), (dataframes$`df_meann$yhat`-dataframes$hb), (dataframes$`df_xgb$yhat`-dataframes$hb),
+             (dataframes$`df_mexgb$yhat`-dataframes$hb), (dataframes$`df_xgbtweedie$yhat`-dataframes$hb))
+colnames(lss)<-c('ANN', 'MeANN', 'XGB', 'MeXGB', 'XGBTweedie')
+write_xlsx(data.frame(lss),"erors.xlsx")
+
+```
+
+```{r}
+dataframes <- df_ann[
+  with(df_ann, order(yhat)),
+]
+rownames(dataframes) <- 1:nrow(dataframes) 
+
+df_p_10 <- dataframes[(1:floor(nrow(dataframes)/10)),][,c('yhat','hb')]
+df_p_20 <- dataframes[((floor(nrow(dataframes)/10)*1+1)):(floor(nrow(dataframes)/10)*2),][,c('yhat','hb')]
+df_p_30 <- dataframes[((floor(nrow(dataframes)/10)*2+1)):(floor(nrow(dataframes)/10)*3),][,c('yhat','hb')]
+df_p_40 <- dataframes[((floor(nrow(dataframes)/10)*3+1)):(floor(nrow(dataframes)/10)*4),][,c('yhat','hb')]
+df_p_50 <- dataframes[((floor(nrow(dataframes)/10)*4+1)):(floor(nrow(dataframes)/10)*5),][,c('yhat','hb')]
+df_p_60 <- dataframes[((floor(nrow(dataframes)/10)*5+1)):(floor(nrow(dataframes)/10)*6),][,c('yhat','hb')]
+df_p_70 <- dataframes[((floor(nrow(dataframes)/10)*6+1)):(floor(nrow(dataframes)/10)*7),][,c('yhat','hb')]
+df_p_80 <- dataframes[((floor(nrow(dataframes)/10)*7+1)):(floor(nrow(dataframes)/10)*8),][,c('yhat','hb')]
+df_p_90 <- dataframes[((floor(nrow(dataframes)/10)*8+1)):(floor(nrow(dataframes)/10)*9),][,c('yhat','hb')]
+df_p_100 <- dataframes[((floor(nrow(dataframes)/10)*9+1):(floor(nrow(dataframes)/10)*10+2)),][,c('yhat','hb')]
+
+percmean <- rbind(colMeans(data.frame(df_p_10)),
+                  colMeans(data.frame(df_p_20)),
+                  colMeans(data.frame(df_p_30)),
+                  colMeans(data.frame(df_p_40)),
+                  colMeans(data.frame(df_p_50)),
+                  colMeans(data.frame(df_p_60)),
+                  colMeans(data.frame(df_p_70)),
+                  colMeans(data.frame(df_p_80)),
+                  colMeans(data.frame(df_p_90)),
+                  colMeans(data.frame(df_p_100)))
+percmean
+
+library('robustbase')
+percmedian <- rbind(colMedians(data.matrix(df_p_10)),
+                    colMedians(data.matrix(df_p_20)),
+                    colMedians(data.matrix(df_p_30)),
+                    colMedians(data.matrix(df_p_40)),
+                    colMedians(data.matrix(df_p_50)),
+                    colMedians(data.matrix(df_p_60)),
+                    colMedians(data.matrix(df_p_70)),
+                    colMedians(data.matrix(df_p_80)),
+                    colMedians(data.matrix(df_p_90)),
+                    colMedians(data.matrix(df_p_100)))
+
+percentile <- t(rbind(percmean,percmedian))
+percentile
+write_xlsx(data.frame(percentile),"percentile_df_ann.xlsx")
+```
+
+```{r}
+redish <- rgb(187,95,105, maxColorValue = 255)
+hist(df_ann$hb, # histogram
+     col=rgb(187,95,105,75, maxColorValue = 255), # column color #peachpuff
+     border="black",
+     prob = TRUE, # show densities instead of frequencies
+     xlab = "Haemoglobin concentration",
+     main = "",
+     xlim = c(0,325),
+     ylim = c(0,0.005))
+lines(density(df_ann$hb), # density plot
+      lwd = 2, # thickness of line
+      col = rgb(123,53,52, maxColorValue = 255)) #"chocolate3"
+
+hist(df_ann_ub$hb, # histogram
+     col=rgb(187,95,105,75, maxColorValue = 255), # column color
+     border="black",
+     prob = TRUE, # show densities instead of frequencies
+     xlab = "Haemoglobin concentration",
+     main = "",
+     ylim = c(0,0.01), 
+     xlim = c(0,400))
+lines(density(df_ann_ub$hb), # density plot
+      lwd = 2, # thickness of line
+      col = rgb(123,53,52, maxColorValue = 255))
+```
+```{r}
+redish <- rgb(187,95,105, maxColorValue = 255)
+hist(df_ann$hb, # histogram
+     col=rgb(187,95,105,75, maxColorValue = 255), # column color #peachpuff
+     border="black",
+     prob = TRUE, # show densities instead of frequencies
+     xlab = "Haemoglobin concentration",
+     main = "",
+     xlim = c(0,325),
+     ylim = c(0,0.005),
+     cex=1.5)
+lines(density(df_ann$hb), # density plot
+      lwd = 1, # thickness of line
+      col = rgb(123,53,52, maxColorValue = 255),
+      lty=1) #"chocolate3"
+
+test<-df_ann[df_ann$hb>47,]
+hist(test$hb, # histogram
+     col=rgb(187,95,105,75, maxColorValue = 255), # column color
+     border="black",
+     prob = TRUE, # show densities instead of frequencies
+     xlab = "Haemoglobin concentration",
+     main = "",
+     ylim = c(0,0.01),
+     xlim = c(0,400))
+lines(density(test$hb), # density plot
+      lwd = 2, # thickness of line
+      col = rgb(123,53,52, maxColorValue = 255))
+```
+
+```{r}
+nrow(df_ann[(df_ann$hb>=0&df_ann$hb<25),])
+nrow(df_ann[(df_ann$hb>=25&df_ann$hb<50),])
+nrow(df_ann[(df_ann$hb>=50&df_ann$hb<75),])
+nrow(df_ann[(df_ann$hb>=75&df_ann$hb<100),])
+nrow(df_ann[(df_ann$hb>=100&df_ann$hb<125),])
+nrow(df_ann[(df_ann$hb>=125&df_ann$hb<150),])
+nrow(df_ann[(df_ann$hb>=150&df_ann$hb<175),])
+nrow(df_ann[(df_ann$hb>=175&df_ann$hb<200),])
+nrow(df_ann[(df_ann$hb>=200&df_ann$hb<225),])
+nrow(df_ann[(df_ann$hb>=225&df_ann$hb<250),])
+nrow(df_ann[(df_ann$hb>=250&df_ann$hb<275),])
+nrow(df_ann[(df_ann$hb>=275&df_ann$hb<300),])
+nrow(df_ann[(df_ann$hb>=300&df_ann$hb<325),])
+nrow(df_ann[(df_ann$hb>=325&df_ann$hb<350),])
+nrow(df_ann[(df_ann$hb>=350&df_ann$hb<375),])
+nrow(df_ann[(df_ann$hb>=375&df_ann$hb<400),])
+nrow(df_ann[(df_ann$hb>=400&df_ann$hb<425),])
+```
+
+```{r}
+df_ann_error <- df_ann
+df_meann_error <- df_meann
+df_xgb_error <- df_xgb
+df_mexgb_error <- df_mexgb
+df_xgbtweedie_error <- df_xgbtweedie
+
+df_meann_error$yhat <- abs(df_meann$hb-df_meann$yhat)
+df_xgb_error$yhat <- abs(df_xgb$hb-df_xgb$yhat)
+df_mexgb_error$yhat <- abs(df_mexgb$hb-df_mexgb$yhat)
+df_xgbtweedie_error$yhat <- abs(df_xgbtweedie$hb-df_xgbtweedie$yhat)
+
+
+dataframes <- df_meann[
+  with(df_ann, order(hb)),
+]
+dataframes <- dataframes
+rownames(dataframes) <- 1:nrow(dataframes) 
+
+df_p_10x <- dataframes[(1:floor(nrow(dataframes)/10)),][,c('yhat','hb')]
+df_p_20 <- dataframes[((floor(nrow(dataframes)/10)*1+1)):(floor(nrow(dataframes)/10)*2),][,c('yhat','hb')]
+df_p_30 <- dataframes[((floor(nrow(dataframes)/10)*2+1)):(floor(nrow(dataframes)/10)*3),][,c('yhat','hb')]
+df_p_40 <- dataframes[((floor(nrow(dataframes)/10)*3+1)):(floor(nrow(dataframes)/10)*4),][,c('yhat','hb')]
+df_p_50 <- dataframes[((floor(nrow(dataframes)/10)*4+1)):(floor(nrow(dataframes)/10)*5),][,c('yhat','hb')]
+df_p_60 <- dataframes[((floor(nrow(dataframes)/10)*5+1)):(floor(nrow(dataframes)/10)*6),][,c('yhat','hb')]
+df_p_70 <- dataframes[((floor(nrow(dataframes)/10)*6+1)):(floor(nrow(dataframes)/10)*7),][,c('yhat','hb')]
+df_p_80 <- dataframes[((floor(nrow(dataframes)/10)*7+1)):(floor(nrow(dataframes)/10)*8),][,c('yhat','hb')]
+df_p_90 <- dataframes[((floor(nrow(dataframes)/10)*8+1)):(floor(nrow(dataframes)/10)*9),][,c('yhat','hb')]
+df_p_100 <- dataframes[((floor(nrow(dataframes)/10)*9+1):(floor(nrow(dataframes)/10)*10+2)),][,c('yhat','hb')]
+
+percmean <- rbind(colMeans(data.frame(df_p_10)),
+                  colMeans(data.frame(df_p_20)),
+                  colMeans(data.frame(df_p_30)),
+                  colMeans(data.frame(df_p_40)),
+                  colMeans(data.frame(df_p_50)),
+                  colMeans(data.frame(df_p_60)),
+                  colMeans(data.frame(df_p_70)),
+                  colMeans(data.frame(df_p_80)),
+                  colMeans(data.frame(df_p_90)),
+                  colMeans(data.frame(df_p_100)))
+percmean
+
+library('robustbase')
+percmedian <- rbind(colMedians(data.matrix(df_p_10)),
+                    colMedians(data.matrix(df_p_20)),
+                    colMedians(data.matrix(df_p_30)),
+                    colMedians(data.matrix(df_p_40)),
+                    colMedians(data.matrix(df_p_50)),
+                    colMedians(data.matrix(df_p_60)),
+                    colMedians(data.matrix(df_p_70)),
+                    colMedians(data.matrix(df_p_80)),
+                    colMedians(data.matrix(df_p_90)),
+                    colMedians(data.matrix(df_p_100)))
+
+percentile <- t(rbind(percmean,percmedian))
+write_xlsx(data.frame(percentile),"percentile_meann_error.xlsx")
+```
+
